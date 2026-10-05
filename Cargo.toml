@@ -51,3 +51,8 @@ todo = "deny"
 unimplemented = "deny"
 module_name_repetitions = "allow"
 redundant_pub_crate = "allow"
+
+[[example]]
+name = "react_demo"
+# `cargo test` also runs the smoke tests in the example.
+test = true

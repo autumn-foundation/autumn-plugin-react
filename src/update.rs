@@ -64,13 +64,13 @@ impl PropsUpdate {
 
     /// The number of updates.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.entries.len()
     }
 
     /// `true` when the update has no entries.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
@@ -86,13 +86,20 @@ impl PropsUpdate {
             if i > 0 {
                 json.push(',');
             }
-            let target = serde_json::Value::String(selector.clone());
-            json.push_str(&format!("{{\"target\":{target},\"props\":{props}}}"));
+            json.push_str("{\"target\":");
+            json.push_str(&serde_json::Value::String(selector.clone()).to_string());
+            json.push_str(",\"props\":");
+            json.push_str(props);
+            json.push('}');
         }
         json.push_str("]}");
         ascii_json(&json)
     }
 }
+
+const HEX: [char; 16] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+];
 
 /// Escapes each character outside visible ASCII as `\uXXXX`.
 ///
@@ -105,7 +112,10 @@ fn ascii_json(json: &str) -> String {
             out.push(c);
         } else {
             for unit in c.encode_utf16(&mut [0; 2]) {
-                out.push_str(&format!("\\u{unit:04x}"));
+                out.push_str("\\u");
+                for shift in [12, 8, 4, 0] {
+                    out.push(HEX[usize::from((*unit >> shift) & 0xf)]);
+                }
             }
         }
     }
