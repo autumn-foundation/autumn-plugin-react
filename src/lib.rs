@@ -64,8 +64,10 @@ mod assets;
 mod island;
 mod plugin;
 mod tags;
+mod update;
 
 pub use assets::{ASSETS_NAMESPACE, LOADER_JS, REACT_ASSETS};
 pub use island::{Island, JsonKind, MountWhen, PropsError};
 pub use plugin::{PLUGIN_NAME, ReactPlugin};
 pub use tags::{react_bundle, react_script};
+pub use update::{PROPS_EVENT, PropsUpdate};

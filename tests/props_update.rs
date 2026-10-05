@@ -25,19 +25,20 @@ fn header_value_is_an_event_with_a_list_of_updates() {
 #[test]
 fn header_value_is_visible_ascii() {
     let update = PropsUpdate::new()
-        .set("#é", &serde_json::json!({ "name": "Zoë 🍁", "nl": "a\nb" }))
+        .set(
+            "#é",
+            &serde_json::json!({ "name": "Zoë 🍁", "nl": "a\nb", "del": "\u{7f}" }),
+        )
         .expect("props");
     let value = update.to_header_value();
-    assert!(
-        value.bytes().all(|b| (0x20..0x7f).contains(&b)),
-        "{value}"
-    );
+    assert!(value.bytes().all(|b| (0x20..0x7f).contains(&b)), "{value}");
     // The JSON still decodes to the same text.
     let back: serde_json::Value = serde_json::from_str(&value).expect("json");
     let first = &back["autumn:react:props"][0];
     assert_eq!(first["target"], "#é");
     assert_eq!(first["props"]["name"], "Zoë 🍁");
     assert_eq!(first["props"]["nl"], "a\nb");
+    assert_eq!(first["props"]["del"], "\u{7f}");
 }
 
 #[test]
@@ -56,7 +57,8 @@ fn empty_update_is_empty() {
 
 #[get("/bump")]
 async fn bump() -> AutumnResult<(PropsUpdate, &'static str)> {
-    let update = PropsUpdate::new().set("#cart", &serde_json::json!({ "count": 3, "who": "Zoë" }))?;
+    let update =
+        PropsUpdate::new().set("#cart", &serde_json::json!({ "count": 3, "who": "Zoë" }))?;
     Ok((update, "ok"))
 }
 
@@ -73,7 +75,7 @@ async fn a_handler_returns_the_update_as_a_response_part() {
     let header = response.header("hx-trigger").expect("HX-Trigger header");
     assert_eq!(
         header,
-        r##"{"autumn:react:props":[{"target":"#cart","props":{"count":3,"who":"Zoë"}}]}"##
+        r##"{"autumn:react:props":[{"target":"#cart","props":{"count":3,"who":"Zo\u00eb"}}]}"##
     );
     assert_eq!(response.text(), "ok");
     // An empty update sends no header.

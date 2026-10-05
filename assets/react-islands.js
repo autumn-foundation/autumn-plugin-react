@@ -302,6 +302,42 @@
     }
   }
 
+  // Sets new props from one `{ target, props }` update. `origin` is the
+  // event target. It is the island when the update has no `target`.
+  function applyProps(update, origin) {
+    if (update === null || typeof update !== 'object') {
+      console.error(PREFIX + 'a props update must be an object', update);
+      return;
+    }
+    let el = origin;
+    if (typeof update.target === 'string') {
+      try {
+        el = Document.prototype.querySelector.call(document, update.target);
+      } catch (error) {
+        el = null;
+      }
+    }
+    if (!el || el.nodeType !== 1 || getAttr(el, ISLAND) === null) {
+      console.error(PREFIX + 'no island for the props update', update.target);
+      return;
+    }
+    const props = update.props;
+    if (props === null || typeof props !== 'object' || Array.isArray(props)) {
+      console.error(PREFIX + 'props update for "' + getAttr(el, ISLAND) + '" needs a props object');
+      return;
+    }
+    // The observer sees the attribute change and renders again.
+    setAttr(el, PROPS, JSON.stringify(props));
+  }
+
+  // htmx sends `HX-Trigger: {"autumn:react:props": [...]}` as
+  // `detail.value`. App code can send `detail: { target?, props }`.
+  document.addEventListener('autumn:react:props', (event) => {
+    const detail = event.detail;
+    const updates = detail && Array.isArray(detail.value) ? detail.value : [detail];
+    for (const update of updates) applyProps(update, event.target);
+  });
+
   win.autumnReact = {
     loader: true,
     /** Registers `{ createElement, createRoot, components }` entries. */

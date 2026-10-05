@@ -58,6 +58,7 @@ fn names_the_public_contract() {
         "data-react-state",
         "data-react-ignore",
         "autumn:react:",
+        "autumn:react:props",
         "identifierPrefix",
         "onUncaughtError",
         "MutationObserver",

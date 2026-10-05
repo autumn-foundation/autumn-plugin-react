@@ -135,21 +135,7 @@ impl Island {
     ///   value (for example, a map with non-string keys).
     /// - [`PropsError::NotAnObject`] when the JSON is not an object.
     pub fn props<T: Serialize + ?Sized>(mut self, props: &T) -> Result<Self, PropsError> {
-        // Serialize one time and keep the field order. The first byte of
-        // JSON text gives its kind.
-        let json = serde_json::to_string(props)?;
-        let kind = match json.as_bytes().first() {
-            Some(b'{') => None,
-            Some(b'[') => Some(JsonKind::Array),
-            Some(b'"') => Some(JsonKind::String),
-            Some(b'n') => Some(JsonKind::Null),
-            Some(b't' | b'f') => Some(JsonKind::Boolean),
-            _ => Some(JsonKind::Number),
-        };
-        if let Some(kind) = kind {
-            return Err(PropsError::NotAnObject(kind));
-        }
-        self.props = Some(json);
+        self.props = Some(props_json(props)?);
         Ok(self)
     }
 
@@ -178,6 +164,22 @@ impl Island {
         self.class = Some(class.into());
         self
     }
+}
+
+/// Serializes props to JSON text. The text must be a JSON object.
+pub(crate) fn props_json<T: Serialize + ?Sized>(props: &T) -> Result<String, PropsError> {
+    // Serialize one time and keep the field order. The first byte of JSON
+    // text gives its kind.
+    let json = serde_json::to_string(props)?;
+    let kind = match json.as_bytes().first() {
+        Some(b'{') => return Ok(json),
+        Some(b'[') => JsonKind::Array,
+        Some(b'"') => JsonKind::String,
+        Some(b'n') => JsonKind::Null,
+        Some(b't' | b'f') => JsonKind::Boolean,
+        _ => JsonKind::Number,
+    };
+    Err(PropsError::NotAnObject(kind))
 }
 
 impl Render for Island {

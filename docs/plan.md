@@ -47,6 +47,10 @@ Ideas, not filtered:
 9. Mount strategies: `load`, `idle`, `visible`.
 10. DOM events (`autumn:react:mount`, `:update`, `:unmount`, `:error`) for
     htmx `hx-trigger` and for app code.
+10a. A server handler sends new props in an `HX-Trigger` header
+    (`PropsUpdate`). The loader applies them to the island. Found during
+    GREEN: `HxResponseExt::hx_trigger` drops a value that is not visible
+    ASCII, so the helper escapes all other characters.
 11. `ReactPlugin::bundle(&BUNDLE)` installs the app bundle. `react_bundle`
     renders its `<link>` and `<script>` tags.
 12. A reference frontend (esbuild + React 19 + JSX). Commit its output, so
@@ -168,6 +172,7 @@ No GitHub issue exists for this plugin. These criteria replace the issue.
 | AC14 | A runnable example and a reference frontend (esbuild + React 19) exist. The example runs with no Node. An end-to-end test drives it with real htmx under the default CSP. |
 | AC15 | `cargo fmt`, `cargo clippy` (pedantic, nursery, `-D warnings`), `cargo test`, doc tests and browser tests pass. Rust line coverage is 85% or more. |
 | AC16 | README, CHANGELOG, ADR, CLAUDE.md, doc comments and a CI workflow exist. Text uses ASD-STE100. |
+| AC17 | `PropsUpdate` sends new props for islands in an `HX-Trigger` header. The header is visible ASCII. The loader applies the `autumn:react:props` event. React keeps the state. |
 
 ## 9. Not in scope
 
