@@ -1,0 +1,17 @@
+{
+  "name": "autumn-plugin-react-dev",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests and the reference frontend for autumn-plugin-react. Not published.",
+  "scripts": {
+    "build:islands": "node frontend/build.mjs",
+    "test": "node --test --test-concurrency=1 --test-timeout=30000 \"js-tests/*.test.mjs\"",
+    "test:e2e": "node --test --test-timeout=120000 \"js-tests/e2e/*.test.mjs\""
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.56.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

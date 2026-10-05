@@ -1,0 +1,4 @@
+* text=auto eol=lf
+# Bundle bytes decide the SRI hashes. Do not change them.
+examples/islands/** -text
+assets/** -text
