@@ -1,6 +1,8 @@
 //! [`Island`]: the server side of one React island.
 
-use maud::{Markup, Render};
+use std::fmt::Write as _;
+
+use maud::{Escaper, Markup, PreEscaped, Render};
 use serde::Serialize;
 
 /// When the loader mounts an island.
@@ -67,6 +69,44 @@ pub enum PropsError {
     /// The value is JSON, but not a JSON object.
     #[error("island props must be a JSON object, not {0}")]
     NotAnObject(JsonKind),
+    /// The object has a `__proto__` key. React copies props with
+    /// `props[key] = value`, so this key would set the prototype.
+    #[error("island props must not have a `__proto__` key")]
+    ProtoKey,
+}
+
+/// The error from [`Island::attr`].
+///
+/// It converts to `AutumnError` (status 500), so `?` works in a handler.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum AttrError {
+    /// The name is empty, does not start with an ASCII letter, or has a
+    /// character other than `A-Z a-z 0-9 - _ : .`.
+    #[error("`{0}` is not a valid attribute name")]
+    InvalidName(String),
+    /// The name is `id`, `class`, `data-react-*` or an `on*` event handler.
+    #[error("the island attribute `{0}` is reserved; use the island builder method or the loader")]
+    Reserved(String),
+}
+
+/// Checks an extra attribute name for [`Island::attr`].
+fn check_attr_name(name: &str) -> Result<(), AttrError> {
+    let mut chars = name.chars();
+    let valid = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'));
+    if !valid {
+        return Err(AttrError::InvalidName(name.to_owned()));
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower == "id"
+        || lower == "class"
+        || lower.starts_with("data-react-")
+        || lower.starts_with("on")
+    {
+        return Err(AttrError::Reserved(name.to_owned()));
+    }
+    Ok(())
 }
 
 /// One React island: an element that the loader mounts a component into.
@@ -105,6 +145,8 @@ pub struct Island {
     fallback: Option<Markup>,
     id: Option<String>,
     class: Option<String>,
+    attrs: Vec<(String, String)>,
+    inline: bool,
 }
 
 impl Island {
@@ -118,6 +160,8 @@ impl Island {
             fallback: None,
             id: None,
             class: None,
+            attrs: Vec::new(),
+            inline: false,
         }
     }
 
@@ -132,8 +176,11 @@ impl Island {
     /// # Errors
     ///
     /// - [`PropsError::Serialize`] when `serde_json` cannot serialize the
-    ///   value (for example, a map with non-string keys).
+    ///   value (for example, a map with tuple keys).
     /// - [`PropsError::NotAnObject`] when the JSON is not an object.
+    /// - [`PropsError::ProtoKey`] when the object has a `__proto__` key.
+    ///
+    /// `serde_json` writes a non-finite float (`NaN`, infinity) as `null`.
     pub fn props<T: Serialize + ?Sized>(mut self, props: &T) -> Result<Self, PropsError> {
         self.props = Some(props_json(props)?);
         Ok(self)
@@ -164,6 +211,39 @@ impl Island {
         self.class = Some(class.into());
         self
     }
+
+    /// Adds an attribute, for example `role`, `aria-label` or
+    /// `hx-preserve`. A second call with the same name replaces the value.
+    ///
+    /// # Errors
+    ///
+    /// - [`AttrError::InvalidName`] for a name that is not a plain
+    ///   attribute name.
+    /// - [`AttrError::Reserved`] for `id`, `class` (use [`Island::id`] and
+    ///   [`Island::class`]), `data-react-*` (the loader owns them) and `on*`
+    ///   event handlers (the default CSP blocks them).
+    pub fn attr(
+        mut self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Result<Self, AttrError> {
+        let name = name.into();
+        check_attr_name(&name)?;
+        let value = value.into();
+        match self.attrs.iter_mut().find(|(n, _)| *n == name) {
+            Some(slot) => slot.1 = value,
+            None => self.attrs.push((name, value)),
+        }
+        Ok(self)
+    }
+
+    /// Renders a `<span>`, not a `<div>`. Use it for an island inside a
+    /// `<p>`, a `<button>` or another element that holds only inline
+    /// content.
+    pub const fn inline(mut self) -> Self {
+        self.inline = true;
+        self
+    }
 }
 
 /// Serializes props to JSON text. The text must be a JSON object.
@@ -172,7 +252,7 @@ pub(crate) fn props_json<T: Serialize + ?Sized>(props: &T) -> Result<String, Pro
     // text gives its kind.
     let json = serde_json::to_string(props)?;
     let kind = match json.as_bytes().first() {
-        Some(b'{') => return Ok(json),
+        Some(b'{') => return check_proto_key(json),
         Some(b'[') => JsonKind::Array,
         Some(b'"') => JsonKind::String,
         Some(b'n') => JsonKind::Null,
@@ -182,16 +262,52 @@ pub(crate) fn props_json<T: Serialize + ?Sized>(props: &T) -> Result<String, Pro
     Err(PropsError::NotAnObject(kind))
 }
 
+/// Refuses a JSON object with a top-level `__proto__` key.
+fn check_proto_key(json: String) -> Result<String, PropsError> {
+    // Read the keys only. Escaped keys (`\u005f_proto__`) decode too.
+    let keys: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&json)?;
+    if keys.contains_key("__proto__") {
+        return Err(PropsError::ProtoKey);
+    }
+    Ok(json)
+}
+
+/// Writes ` name="value"` with the value escaped.
+fn write_attr(html: &mut String, name: &str, value: &str) {
+    html.push(' ');
+    html.push_str(name);
+    html.push_str("=\"");
+    // Writing to a `String` cannot fail.
+    let _ = Escaper::new(html).write_str(value);
+    html.push('"');
+}
+
 impl Render for Island {
     fn render(&self) -> Markup {
-        maud::html! {
-            div data-react-island=(self.name)
-                data-react-props=[self.props.as_deref()]
-                data-react-mount=[self.when.attr()]
-                id=[self.id.as_deref()]
-                class=[self.class.as_deref()] {
-                @if let Some(fallback) = &self.fallback { (fallback) }
+        let tag = if self.inline { "span" } else { "div" };
+        let mut html = format!("<{tag}");
+        write_attr(&mut html, "data-react-island", &self.name);
+        let known = [
+            ("data-react-props", self.props.as_deref()),
+            ("data-react-mount", self.when.attr()),
+            ("id", self.id.as_deref()),
+            ("class", self.class.as_deref()),
+        ];
+        for (name, value) in known {
+            if let Some(value) = value {
+                write_attr(&mut html, name, value);
             }
         }
+        for (name, value) in &self.attrs {
+            write_attr(&mut html, name, value);
+        }
+        html.push('>');
+        if let Some(fallback) = &self.fallback {
+            html.push_str(&fallback.0);
+        }
+        html.push_str("</");
+        html.push_str(tag);
+        html.push('>');
+        PreEscaped(html)
     }
 }

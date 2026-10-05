@@ -17,8 +17,8 @@ server rendering, htmx and the Maud layout.
 
 Let an app put React components ("islands") into Maud pages:
 
-- Serve a small island loader through the Autumn 0.8 `plugin_assets` seam.
-- Serve the app's compiled components through the same seam.
+- Serve a small island loader through the Autumn 0.8 `plugin_assets` API.
+- Serve the app's compiled components through the same API.
 - Give a typed Rust `Island` builder that renders the mount element.
 - Mount and unmount islands when htmx changes the page.
 - Work under the default CSP (`script-src 'self'`). Use no inline script.
@@ -35,7 +35,8 @@ Ideas, not filtered:
    `window.autumnReact.push({ createElement, createRoot, components })`.
    Script order does not matter.
 4. The app brings its own `react` and `react-dom`. The plugin does not
-   vendor React. The app selects the version (18 or 19).
+   vendor React. The app selects the version (19 or later: the loader
+   needs `onUncaughtError`).
 5. One `MutationObserver` mounts added islands and unmounts removed islands.
    It covers htmx swaps, history restore and manual DOM edits.
 6. A change to `data-react-props` renders the same root again. React keeps
@@ -102,7 +103,7 @@ Question: "How can this plugin fail its users?" Each answer gives a control.
   `script-src 'self'`. React 19 has `createRoot(el, options)`,
   `root.render(element)` and `root.unmount()`. React 19 has no UMD build,
   so an app needs a bundler. Two sibling plugins (`autumn-plugin-svelte`,
-  `autumn-plugin-vanilla`) use the same seam. Chromium and Playwright are on
+  `autumn-plugin-vanilla`) use the same API. Chromium and Playwright are on
   the test machine. Verus is not on this machine.
 - **Red (feelings).** Developers want to write a `.jsx` file and put it in a
   Maud page with one line. Node to build is acceptable. Node at run time is
@@ -129,22 +130,30 @@ The loader keeps one record for each island element.
 
 | From | Event | To |
 | --- | --- | --- |
-| (none) | scan finds the element, strategy `idle`/`visible` | `waiting` |
+| (none) | scan finds a connected element, strategy `idle`/`visible` | `waiting` |
 | (none) or `waiting` | trigger fires, component not registered | `pending` |
 | `pending` | a bundle registers the name | `mounted` |
 | (none) or `waiting` | trigger fires, component registered | `mounted` |
+| `waiting` | `data-react-mount` changes | start again |
 | `mounted` | `data-react-props` changes | `mounted` (same root, new props) |
-| `mounted` | `data-react-island` changes | `mounted` (new root) |
-| any | props are not a JSON object, or `createRoot` throws | `error` |
+| `mounted` | `data-react-props` is bad | `error` (last good render stays) |
 | `mounted` | React reports an uncaught error | `error` (fallback back) |
-| any | element is not connected after a microtask | (none) |
+| `error` | `data-react-props` changes | start again |
+| any | `data-react-island` changes or goes away | start again, or (none) |
+| any | props are not a JSON object, or `createRoot` throws | `error` (fallback stays) |
+| any | the element moves into `[data-react-ignore]` or an island | (none), fallback back |
+| any | the element is not connected after the task | (none), fallback back |
+
+"Start again" means: tear down (fallback back), then scan the element.
 
 Invariants:
 
 - One element has one record and one root at most.
+- Only a connected element gets a record.
 - An element inside another island, or inside `[data-react-ignore]`, has
-  no record.
-- A record in `error` or `pending` shows the fallback.
+  no live record.
+- A record in `pending`, or in `error` with no root, shows the fallback.
+- A torn-down element has its fallback and no `data-react-state`.
 
 ## 7. Decisions
 
@@ -164,17 +173,61 @@ No GitHub issue exists for this plugin. These criteria replace the issue.
 | AC6 | The loader mounts islands that htmx swaps in. It unmounts islands that htmx swaps out. A moved island keeps its root. |
 | AC7 | A `data-react-props` change renders the same root again. The component keeps its state. |
 | AC8 | `idle` and `visible` wait for their trigger. Teardown cancels a pending trigger. |
-| AC9 | Bad props, an unknown component or a render error affect one island only. The fallback stays or comes back. The island gets `data-react-state="error"` and sends `autumn:react:error`. |
+| AC9 | Bad props, a failed mount or a render crash affect one island only. The island gets `data-react-state="error"` and sends `autumn:react:error`. The fallback stays (bad props, failed mount) or comes back (crash). Bad props on a mounted island keep the last good render. An unknown component stays `pending` with its fallback. |
 | AC10 | Script order does not matter (queue). A late registration mounts waiting islands. One element mounts one time only. A second loader copy does nothing. |
 | AC11 | Each root has a unique `identifierPrefix`. |
-| AC12 | `data-react-ignore` and nested islands do not mount. The loader uses no `eval`, `new Function`, `innerHTML` or `document.write`. |
+| AC12 | `data-react-ignore` and nested islands do not mount. The loader uses no `eval`, `Function`, `innerHTML` or `document.write`. It resists DOM clobbering and refuses a `__proto__` props key. |
 | AC13 | The plugin passes `autumn_web::plugin_conformance` and declares a `PluginContract` for `autumn-web` 0.8. A second install is harmless. |
 | AC14 | A runnable example and a reference frontend (esbuild + React 19) exist. The example runs with no Node. An end-to-end test drives it with real htmx under the default CSP. |
 | AC15 | `cargo fmt`, `cargo clippy` (pedantic, nursery, `-D warnings`), `cargo test`, doc tests and browser tests pass. Rust line coverage is 85% or more. |
 | AC16 | README, CHANGELOG, ADR, CLAUDE.md, doc comments and a CI workflow exist. Text uses ASD-STE100. |
 | AC17 | `PropsUpdate` sends new props for islands in an `HX-Trigger` header. The header is visible ASCII. The loader applies the `autumn:react:props` event. React keeps the state. |
+| AC18 | `PropsUpdate` merges with other trigger events and can use `HX-Trigger-After-Settle`. (Added in review round 1.) |
+| AC19 | `Island::attr` adds checked extra attributes. `Island::inline` renders a `<span>`. (Added in review round 1.) |
+| AC20 | The loader refuses React before 19 when the entry gives `version`. With `flushSync`, the events fire after React commits. (Added in review round 1.) |
 
-## 9. Not in scope
+## 9. Review round 1
+
+Four review agents checked the work: loader runtime, security, Rust API,
+and tests with docs and CI. The fixes:
+
+- **Loader lifecycle.** Only connected elements mount, so no root leaks on
+  a detached element. Teardown always puts the fallback back. Stale React
+  output from an htmx history restore is not kept as the fallback. A live
+  island that moves into `[data-react-ignore]` or into an island is torn
+  down. `data-react-ignore` and `data-react-mount` changes are followed.
+  One batch with a new name and new props mounts one time.
+- **React version.** React 18 has no `onUncaughtError`, so a crash lost
+  the fallback. The loader now needs React 19 and refuses an older
+  `version`. With `flushSync`, the events fire after the commit.
+- **Security.** DOM calls use prototype getters, so `<form
+  name="documentElement">` and `<input name="nodeType">` cannot stop the
+  loader. A cross-origin frame named `autumnReact` cannot stop it. The
+  loader and `props_json` refuse a `__proto__` props key. The docs now say
+  that the sanitizer must remove `hx-*` too: an out-of-band swap can move
+  an element out of `[data-react-ignore]`. The demo bundle (React, MIT)
+  is not in the published crate.
+- **Rust.** The plugin name includes a fingerprint of each bundle, so a
+  second bundle with a used namespace stops the app (before, Autumn
+  skipped it without an error). `PropsUpdate` merges trigger headers,
+  makes compact ASCII JSON from raw JSON, and has `after_settle`.
+  `Island` has `attr` and `inline`.
+- **Tests.** Mutation runs found tests that passed with broken code (a
+  second loader copy, `identifierPrefix`, retry after an error, visible
+  teardown, pending removal). These tests now fail on each mutant. A
+  flaky timer test uses a fake timer now. TypeScript types are checked.
+
+Not changed, with the reason:
+
+- Islands in a restored fallback mount after `data-react-island` goes
+  away. The element is normal content then. The sanitizer rule covers
+  user HTML.
+- The first registration of a name stays. The docs tell library bundles
+  to use a prefix.
+- `<form name="addEventListener">` also breaks React itself. The loader
+  does not try to fix React.
+
+## 10. Not in scope
 
 - Server rendering or hydration of React components.
 - A React version inside the plugin.

@@ -42,6 +42,22 @@ jobs:
       - name: JS syntax
         run: node --check assets/react-islands.js
 
+  types:
+    name: TypeScript types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check autumn-react.d.ts
+        run: |
+          npm ci
+          npm run typecheck
+
   test:
     name: Rust tests
     runs-on: ubuntu-latest
@@ -102,7 +118,7 @@ jobs:
       - name: Package excludes test and tool files
         run: |
           files=$(cargo package --list --locked)
-          for path in js-tests/ frontend/ node_modules/ .github/ docs/ CLAUDE.md package.json; do
+          for path in examples/ js-tests/ frontend/ node_modules/ .github/ docs/ CLAUDE.md package.json; do
             if echo "$files" | grep -q "^$path"; then
               echo "::error::$path must not be in the package"
               exit 1
@@ -147,7 +163,7 @@ jobs:
   ci-pass:
     name: CI pass
     if: always()
-    needs: [lint, test, msrv, coverage, package, browser]
+    needs: [lint, types, test, msrv, coverage, package, browser]
     runs-on: ubuntu-latest
     steps:
       - name: All jobs passed

@@ -33,10 +33,11 @@ pub const PLUGIN_NAME: &str = env!("CARGO_PKG_NAME");
 /// # }
 /// ```
 ///
-/// The plugin name includes the bundle namespaces, for example
-/// `autumn-plugin-react[app-islands]`. Thus a library crate and the app can
-/// each install a `ReactPlugin` with their own bundles. Autumn skips a second
-/// plugin with the same name.
+/// The plugin name includes each bundle namespace and a fingerprint of its
+/// files, for example `autumn-plugin-react[app-islands@1a2b3c4d]`. Thus a
+/// library crate and the app can each install a `ReactPlugin` with their
+/// own bundles. Autumn skips a second plugin with the same bundles. Two
+/// different bundles with one namespace stop the app at start-up.
 #[derive(Debug, Default)]
 #[must_use]
 pub struct ReactPlugin {
@@ -72,15 +73,28 @@ impl ReactPlugin {
     }
 }
 
+/// `namespace@fingerprint`. The fingerprint is FNV-1a (32 bit) over the
+/// hashed URLs of the files, so it changes when any file changes.
+fn bundle_id(bundle: &PluginAssets) -> String {
+    let mut hash: u32 = 0x811c_9dc5;
+    for asset in bundle.iter() {
+        for byte in asset.url().bytes().chain([0]) {
+            hash ^= u32::from(byte);
+            hash = hash.wrapping_mul(0x0100_0193);
+        }
+    }
+    format!("{}@{hash:08x}", bundle.namespace())
+}
+
 impl Plugin for ReactPlugin {
     fn name(&self) -> Cow<'static, str> {
         if self.bundles.is_empty() {
             return Cow::Borrowed(PLUGIN_NAME);
         }
-        let mut namespaces: Vec<&str> = self.bundles.iter().map(|b| b.namespace()).collect();
-        namespaces.sort_unstable();
-        namespaces.dedup();
-        Cow::Owned(format!("{PLUGIN_NAME}[{}]", namespaces.join(",")))
+        let mut ids: Vec<String> = self.bundles.iter().map(|b| bundle_id(b)).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        Cow::Owned(format!("{PLUGIN_NAME}[{}]", ids.join(",")))
     }
 
     fn contract(&self) -> Option<PluginContract> {

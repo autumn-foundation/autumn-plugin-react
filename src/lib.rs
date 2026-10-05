@@ -1,17 +1,18 @@
-//! React islands for Autumn apps: React components inside Maud + htmx pages.
+//! React islands for Autumn apps: React 19 components inside Maud + htmx
+//! pages.
 //!
-//! 1. Build your components with a bundler. The entry file registers them:
+//! 1. Build your components with a bundler. The entry file registers them
+//!    (the README has a version that also checks the global):
 //!
 //!    ```js
-//!    import { createElement } from "react";
+//!    import { createElement, version } from "react";
+//!    import { flushSync } from "react-dom";
 //!    import { createRoot } from "react-dom/client";
-//!    import Counter from "./Counter.jsx";
+//!    import { Counter } from "./Counter.jsx";
 //!
-//!    let queue = window.autumnReact;
-//!    if (!Array.isArray(queue) && queue?.loader !== true) {
-//!      queue = window.autumnReact = [];
-//!    }
-//!    queue.push({ createElement, createRoot, components: { Counter } });
+//!    (window.autumnReact ??= []).push({
+//!      createElement, createRoot, flushSync, version, components: { Counter },
+//!    });
 //!    ```
 //!
 //! 2. Embed the build output as a `PluginAssets` bundle and install it:
@@ -57,8 +58,10 @@
 //! # Security
 //!
 //! The loader mounts each `data-react-island` element in the page. If your
-//! app shows user HTML, the sanitizer must remove `data-react-*`
-//! attributes, or you must put that HTML in a `data-react-ignore` element.
+//! app shows user HTML, the sanitizer must remove `data-react-*`, `hx-*`
+//! and `data-hx-*` attributes. `data-react-ignore` alone is not sufficient:
+//! an htmx out-of-band swap can move an element out of it. Do not spread
+//! untrusted props onto DOM elements.
 
 mod assets;
 mod island;
@@ -67,7 +70,7 @@ mod tags;
 mod update;
 
 pub use assets::{ASSETS_NAMESPACE, LOADER_JS, REACT_ASSETS};
-pub use island::{Island, JsonKind, MountWhen, PropsError};
+pub use island::{AttrError, Island, JsonKind, MountWhen, PropsError};
 pub use plugin::{PLUGIN_NAME, ReactPlugin};
 pub use tags::{react_bundle, react_script};
 pub use update::{PROPS_EVENT, PropsUpdate};

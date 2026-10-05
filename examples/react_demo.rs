@@ -4,8 +4,9 @@
 //! cargo run --example react_demo
 //! ```
 //!
-//! Then open <http://127.0.0.1:3000>. The page has five islands. The htmx
-//! buttons add and remove islands, and send new props to the basket.
+//! Then open <http://127.0.0.1:3000>. The page has four islands. An htmx
+//! button adds a fifth (the clock) and another removes it. A third button
+//! sends new props to the basket.
 //!
 //! The island bundle (`examples/islands/`) is the committed output of
 //! `npm run build:islands`. You need no Node to run the demo.

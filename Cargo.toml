@@ -10,6 +10,8 @@ readme = "README.md"
 keywords = ["autumn", "react", "islands", "htmx", "plugin"]
 categories = ["web-programming"]
 exclude = [
+    # The demo and its bundle (React, MIT) are not in the published crate.
+    "examples/",
     ".github/",
     "docs/",
     "frontend/",
@@ -30,6 +32,7 @@ serde_json = "1"
 thiserror = "2"
 
 [dev-dependencies]
+serde_json = { version = "1", features = ["raw_value"] }
 autumn-web = { version = "0.8", default-features = false, features = ["maud", "htmx"] }
 base64 = "0.22"
 proptest = "1"
