@@ -6,7 +6,8 @@
   "scripts": {
     "build:islands": "node frontend/build.mjs",
     "test": "node --test --test-concurrency=1 --test-timeout=30000 \"js-tests/*.test.mjs\"",
-    "test:e2e": "node --test --test-timeout=120000 \"js-tests/e2e/*.test.mjs\""
+    "test:e2e": "node --test --test-timeout=120000 \"js-tests/e2e/*.test.mjs\"",
+    "test:coverage": "rm -rf target/js-coverage && LOADER_COVERAGE=target/js-coverage npm test && node js-tests/coverage-report.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

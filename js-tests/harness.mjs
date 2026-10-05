@@ -5,7 +5,7 @@
 // bundles use the React development build, so React warnings show as
 // console errors and fail the tests.
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
@@ -22,6 +22,10 @@ const FIXTURES = {
 
 let browser;
 let bundles;
+// With LOADER_COVERAGE set, each page records V8 block coverage.
+const COVERAGE_DIR = process.env.LOADER_COVERAGE;
+const covered = new Uint8Array(LOADER.length);
+const pages = [];
 
 async function bundle(entry) {
   const result = await build({
@@ -45,9 +49,27 @@ export async function launch() {
   browser = await chromium.launch();
 }
 
-/** Stops Chromium. Call from `after`. */
+/** Stops Chromium and writes coverage. Call from `after`. */
 export async function close() {
+  if (COVERAGE_DIR) {
+    for (const page of pages) {
+      const entries = await page.coverage.stopJSCoverage();
+      const entry = entries.find((e) => e.url.endsWith('/react-islands.js'));
+      if (entry) markCovered(entry.functions);
+    }
+    mkdirSync(COVERAGE_DIR, { recursive: true });
+    writeFileSync(`${COVERAGE_DIR}/${process.pid}.bin`, covered);
+  }
   await browser?.close();
+}
+
+// Outer ranges first, so the innermost range sets each byte.
+function markCovered(functions) {
+  const ranges = functions.flatMap((f) => f.ranges);
+  ranges.sort((a, b) => a.startOffset - b.startOffset || b.endOffset - a.endOffset);
+  const hit = new Uint8Array(LOADER.length);
+  for (const r of ranges) hit.fill(r.count > 0 ? 1 : 0, r.startOffset, r.endOffset);
+  for (let i = 0; i < hit.length; i++) covered[i] |= hit[i];
 }
 
 /**
@@ -101,6 +123,10 @@ export async function open(body, options = {}) {
     return route.fulfill({ status: 404, body: 'not found' });
   });
 
+  if (COVERAGE_DIR) {
+    await page.coverage.startJSCoverage({ resetOnNavigation: false });
+    pages.push(page);
+  }
   await page.addInitScript(CSP_WATCH);
   if (options.init) await page.addInitScript(options.init);
   await page.goto(`${ORIGIN}/`);

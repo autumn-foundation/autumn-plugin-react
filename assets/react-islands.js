@@ -33,11 +33,10 @@
   const getAttr = (el, name) => E.getAttribute.call(el, name);
   const setAttr = (el, name, value) => E.setAttribute.call(el, name, value);
   const closest = (el, selector) => E.closest.call(el, selector);
-  const findAll = (root, selector) =>
-    root === document
-      ? Document.prototype.querySelectorAll.call(root, selector)
-      : E.querySelectorAll.call(root, selector);
+  const findAll = (el, selector) => E.querySelectorAll.call(el, selector);
   const matches = (el, selector) => E.matches.call(el, selector);
+  const isPlainObject = (value) =>
+    value !== null && typeof value === 'object' && !Array.isArray(value);
 
   /** name -> { component, createElement, createRoot } */
   const registry = new Map();
@@ -59,21 +58,24 @@
     setAttr(record.el, STATE, state);
   }
 
-  // Returns the props object. Throws when the JSON is bad or not an object.
-  function readProps(el) {
-    const text = getAttr(el, PROPS);
-    if (text === null || text === '') return {};
-    const value = JSON.parse(text);
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-      throw new TypeError(PROPS + ' must be a JSON object');
-    }
-    return value;
-  }
-
   function fail(record, message, error) {
     console.error(PREFIX + 'island "' + record.name + '" ' + message, error);
     setState(record, 'error');
     emit(record, 'error', error);
+  }
+
+  // Returns the props object, or `null` after `fail` for bad props.
+  function readProps(record) {
+    const text = getAttr(record.el, PROPS);
+    if (text === null || text === '') return {};
+    try {
+      const value = JSON.parse(text);
+      if (isPlainObject(value)) return value;
+      throw new TypeError(PROPS + ' must be a JSON object');
+    } catch (error) {
+      fail(record, 'has bad props:', error);
+      return null;
+    }
   }
 
   // Moves the fallback nodes out of the island, into the record.
@@ -112,13 +114,8 @@
   }
 
   function mount(record, entry) {
-    let props;
-    try {
-      props = readProps(record.el);
-    } catch (error) {
-      fail(record, 'has bad props:', error);
-      return;
-    }
+    const props = readProps(record);
+    if (props === null) return;
     takeFallback(record);
     rootCount += 1;
     try {
@@ -141,13 +138,8 @@
 
   // Renders a mounted island again with new props. React keeps the state.
   function update(record) {
-    let props;
-    try {
-      props = readProps(record.el);
-    } catch (error) {
-      fail(record, 'has bad props:', error);
-      return;
-    }
+    const props = readProps(record);
+    if (props === null) return;
     record.root.render(record.entry.createElement(record.entry.component, props));
     setState(record, 'mounted');
     emit(record, 'update');
@@ -200,7 +192,15 @@
 
   function consider(el) {
     if (records.has(el) || skipped(el)) return;
-    const record = { el, name: getAttr(el, ISLAND), state: null, root: null, cancel: null, fallback: null, entry: null };
+    const record = {
+      el,
+      name: getAttr(el, ISLAND),
+      state: null,
+      root: null,
+      entry: null,
+      cancel: null,
+      fallback: null,
+    };
     records.set(el, record);
     live.add(record);
     const when = getAttr(el, MOUNT);
@@ -224,10 +224,10 @@
     if (hadRoot) emit(record, 'unmount');
   }
 
-  function scan(root) {
-    if (root.nodeType !== 1 && root !== document) return;
-    if (root !== document && matches(root, ISLAND_SELECTOR)) consider(root);
-    for (const el of findAll(root, ISLAND_SELECTOR)) consider(el);
+  // Considers `el` and each island in it.
+  function scan(el) {
+    if (matches(el, ISLAND_SELECTOR)) consider(el);
+    for (const island of findAll(el, ISLAND_SELECTOR)) consider(island);
   }
 
   // A mutation inside an island belongs to React (or to the fallback).
@@ -272,12 +272,10 @@
 
   function register(entry) {
     if (
-      entry === null ||
-      typeof entry !== 'object' ||
+      !isPlainObject(entry) ||
       typeof entry.createRoot !== 'function' ||
       typeof entry.createElement !== 'function' ||
-      entry.components === null ||
-      typeof entry.components !== 'object'
+      !isPlainObject(entry.components)
     ) {
       console.error(PREFIX + 'a registration needs createElement, createRoot and components', entry);
       return;
@@ -305,7 +303,7 @@
   // Sets new props from one `{ target, props }` update. `origin` is the
   // event target. It is the island when the update has no `target`.
   function applyProps(update, origin) {
-    if (update === null || typeof update !== 'object') {
+    if (!isPlainObject(update)) {
       console.error(PREFIX + 'a props update must be an object', update);
       return;
     }
@@ -322,7 +320,7 @@
       return;
     }
     const props = update.props;
-    if (props === null || typeof props !== 'object' || Array.isArray(props)) {
+    if (!isPlainObject(props)) {
       console.error(PREFIX + 'props update for "' + getAttr(el, ISLAND) + '" needs a props object');
       return;
     }
@@ -358,5 +356,5 @@
     attributes: true,
     attributeFilter: [ISLAND, PROPS, MOUNT],
   });
-  scan(document);
+  scan(document.documentElement);
 })();

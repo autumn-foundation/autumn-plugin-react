@@ -47,7 +47,7 @@ test('a bad update gives a console error and changes nothing else', async () => 
   await page.waitForSelector('#c button');
   await trigger(page, '#b', [
     { target: '#missing', props: {} },
-    { target: '[bad', props: {} },
+    { target: '##', props: {} },
     { target: '#not', props: {} },
     { target: '#c', props: [1] },
     { target: '#c' },

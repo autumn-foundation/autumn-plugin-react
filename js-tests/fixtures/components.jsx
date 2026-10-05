@@ -1,7 +1,7 @@
 // Test components. The harness bundles this file with esbuild and real React.
 import { createElement, useEffect, useId, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { register } from './register.js';
+import { register } from '../../frontend/src/register.js';
 
 window.__log = window.__log || [];
 
