@@ -185,7 +185,7 @@ fn plugin_declares_an_autumn_web_0_8_contract() {
         Some(env!("CARGO_PKG_VERSION"))
     );
     assert_eq!(contract.autumn_web.as_deref(), Some("0.8"));
-    assert!(contract.experimental_surfaces.is_empty());
+    assert_eq!(contract.experimental_surfaces, Vec::<String>::new());
     let app = autumn_web::app().plugin(ReactPlugin::new());
     assert_eq!(app.plugin_contracts().len(), 1);
 }
