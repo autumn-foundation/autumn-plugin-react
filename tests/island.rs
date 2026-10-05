@@ -56,7 +56,8 @@ fn props_keep_struct_field_order() {
         .props(&Props { b: 1, a: "z" })
         .expect("props");
     assert!(
-        render(&island).contains(r#"data-react-props="{&quot;b&quot;:1,&quot;a&quot;:&quot;z&quot;}""#),
+        render(&island)
+            .contains(r#"data-react-props="{&quot;b&quot;:1,&quot;a&quot;:&quot;z&quot;}""#),
         "{}",
         render(&island)
     );
@@ -81,7 +82,10 @@ fn hostile_values_are_escaped() {
 fn fallback_markup_is_kept_as_is() {
     let fallback: Markup = html! { span.x { "a & b" } };
     let html = render(&Island::new("X").fallback(fallback));
-    assert!(html.ends_with(r#"><span class="x">a &amp; b</span></div>"#), "{html}");
+    assert!(
+        html.ends_with(r#"><span class="x">a &amp; b</span></div>"#),
+        "{html}"
+    );
 }
 
 #[test]
@@ -126,7 +130,11 @@ fn props_that_do_not_serialize_are_refused() {
     map.insert(vec![1_u8], 1_u8);
     let error = Island::new("X").props(&map).expect_err("bad key");
     assert!(matches!(error, PropsError::Serialize(_)), "{error:?}");
-    assert!(error.to_string().starts_with("island props do not serialize to JSON: "));
+    assert!(
+        error
+            .to_string()
+            .starts_with("island props do not serialize to JSON: ")
+    );
     assert!(std::error::Error::source(&error).is_some());
 }
 

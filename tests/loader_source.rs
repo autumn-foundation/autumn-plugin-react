@@ -41,7 +41,10 @@ fn is_strict_and_wrapped() {
 fn keeps_the_registry_in_a_map() {
     let code = code();
     assert!(code.contains("new Map()"), "the registry is a Map");
-    assert!(code.contains("hasOwnProperty"), "copies own properties only");
+    assert!(
+        code.contains("hasOwnProperty"),
+        "copies own properties only"
+    );
 }
 
 #[test]

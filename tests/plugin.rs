@@ -21,11 +21,15 @@ static APP: PluginAssets = PluginAssets::from_files(
     &[("islands.js", b"window.app = 1;"), ("islands.css", b".a{}")],
 );
 
-static OTHER: PluginAssets =
-    PluginAssets::from_files("react-plugin-other", &[("islands.js", b"window.other = 1;")]);
+static OTHER: PluginAssets = PluginAssets::from_files(
+    "react-plugin-other",
+    &[("islands.js", b"window.other = 1;")],
+);
 
 fn client() -> TestClient {
-    TestApp::new().plugin(ReactPlugin::new().bundle(&APP)).build()
+    TestApp::new()
+        .plugin(ReactPlugin::new().bundle(&APP))
+        .build()
 }
 
 fn sri(bytes: &[u8]) -> String {
@@ -221,7 +225,11 @@ async fn two_plugins_with_different_bundles_both_serve() {
         .plugin(ReactPlugin::new().bundle(&OTHER))
         .build();
     client.get(&APP.url("islands.js")).send().await.assert_ok();
-    client.get(&OTHER.url("islands.js")).send().await.assert_ok();
+    client
+        .get(&OTHER.url("islands.js"))
+        .send()
+        .await
+        .assert_ok();
     client
         .get(&REACT_ASSETS.url(LOADER_JS))
         .send()

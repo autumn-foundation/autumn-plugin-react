@@ -126,7 +126,8 @@ test('the idle strategy waits for requestIdleCallback', async () => {
 
 test('the visible strategy waits until the island is in the viewport', async () => {
   const { page, errors } = await open(
-    '<div style="height:3000px"></div><div id="v" data-react-island="Echo" data-react-mount="visible">wait</div>',
+    // The CSP blocks inline styles. Text lines push the island down.
+    `${'<p>line</p>'.repeat(200)}<div id="v" data-react-island="Echo" data-react-mount="visible">wait</div>`,
     { viewport: { width: 800, height: 600 } },
   );
   await tick(page, 100);
