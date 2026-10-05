@@ -1,0 +1,4 @@
+.island-counter output { font-weight: bold; min-width: 2ch; display: inline-block; }
+.island-basket ul { margin: 0.25rem 0 0; }
+.island-clock { font-variant-numeric: tabular-nums; }
+[data-react-state="error"] { outline: 2px dashed #b00; }

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": false,
+    "lib": ["ES2020", "DOM"]
+  },
+  "include": ["src/autumn-react.d.ts", "src/types-check.ts"]
+}
