@@ -47,7 +47,7 @@ test('the loader exposes the registered names and a loader flag', async () => {
     names: window.autumnReact.names(),
   }));
   assert.equal(state.loader, true);
-  assert.deepEqual(state.names, ['Boom', 'Counter', 'Echo', 'Effect', 'Nest']);
+  assert.deepEqual(state.names, ['Boom', 'Counter', 'Echo', 'Effect', 'Fragile', 'Nest']);
 });
 
 test('an unknown component waits with its fallback, then a late bundle mounts it', async () => {
@@ -109,7 +109,9 @@ test('each root gets a unique identifierPrefix for useId', async () => {
   const ids = await page.$$eval('output[data-echo]', (os) => os.map((o) => o.dataset.id));
   assert.equal(ids.length, 2);
   assert.notEqual(ids[0], ids[1]);
-  for (const id of ids) assert.match(id, /autumn-react-\d+-/);
+  const roots = ids.map((id) => id.match(/autumn-react-(\d+)-/)?.[1]);
+  assert.ok(roots.every(Boolean), ids.join(' '));
+  assert.notEqual(roots[0], roots[1], 'each root has its own prefix');
   assert.deepEqual(errors, []);
 });
 
@@ -146,9 +148,19 @@ test('island markup that React renders does not mount', async () => {
 
 test('a second loader copy does nothing', async () => {
   const { page, errors } = await open(echo({ once: true }), {
-    init: RECORD_EVENTS,
-    head: ['/react-islands.js', '/react-islands.js', '/components.js'],
+    // Count the observers that the loader copies make.
+    init: `${RECORD_EVENTS}
+      window.__observers = 0;
+      const Base = window.MutationObserver;
+      window.MutationObserver = class extends Base {
+        constructor(cb) { super(cb); window.__observers += 1; }
+      };`,
+    files: { '/keep.js': 'window.__first = window.autumnReact;' },
+    head: ['/react-islands.js', '/keep.js', '/react-islands.js', '/components.js'],
   });
+  // Read first: Playwright's waitForSelector makes its own observer.
+  assert.equal(await page.evaluate(() => window.__observers), 1);
+  assert.equal(await page.evaluate(() => window.__first === window.autumnReact), true);
   assert.deepEqual(await echoed(page), { once: true });
   assert.deepEqual(await page.evaluate(() => window.__events), ['mount:Echo']);
   assert.deepEqual(errors, []);

@@ -4,11 +4,12 @@
 
 const LOADER: &str = include_str!("../assets/react-islands.js");
 
-/// The file text without `//` line comments.
+/// The file text without whole-line `//` comments. A `//` inside a
+/// line can be part of a string, so the check keeps those lines.
 fn code() -> String {
     LOADER
         .lines()
-        .map(|line| line.split_once("//").map_or(line, |(code, _)| code))
+        .filter(|line| !line.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -18,15 +19,32 @@ fn uses_no_eval_or_html_strings() {
     let code = code();
     for banned in [
         "eval(",
-        "new Function",
+        "Function(",
         "innerHTML",
         "outerHTML",
         "insertAdjacentHTML",
         "document.write",
-        "setTimeout('",
-        "setTimeout(\"",
+        "srcdoc",
+        "DOMParser",
+        "createContextualFragment",
+        "setHTMLUnsafe",
+        "parseHTMLUnsafe",
+        "import(",
     ] {
         assert!(!code.contains(banned), "react-islands.js uses {banned}");
+    }
+}
+
+#[test]
+fn timers_get_functions_not_strings() {
+    let code = code();
+    for (i, _) in code.match_indices("setTimeout(") {
+        let argument = code[i + "setTimeout(".len()..].trim_start();
+        assert!(
+            argument.starts_with("run"),
+            "setTimeout gets a function: {}",
+            &code[i..i + 40]
+        );
     }
 }
 

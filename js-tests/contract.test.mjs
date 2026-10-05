@@ -70,10 +70,30 @@ test('without requestIdleCallback an idle island mounts after a timeout', async 
 test('without requestIdleCallback teardown clears the timeout', async () => {
   const { page, errors } = await open(
     '<div id="i" data-react-island="Effect" data-react-mount="idle">w</div>',
-    { init: `${RECORD_EVENTS} delete window.requestIdleCallback; delete window.cancelIdleCallback;` },
+    {
+      // Hold the 200 ms timers, so the test does not race the clock.
+      init: `${RECORD_EVENTS}
+        delete window.requestIdleCallback;
+        delete window.cancelIdleCallback;
+        window.__timers = [];
+        const realSet = window.setTimeout;
+        const realClear = window.clearTimeout;
+        window.setTimeout = function (fn, ms) {
+          if (ms !== 200) return realSet.apply(this, arguments);
+          window.__timers.push(fn);
+          return -window.__timers.length;
+        };
+        window.clearTimeout = function (id) {
+          if (id < 0) window.__timers[-id - 1] = null;
+          else realClear(id);
+        };`,
+    },
   );
+  assert.equal(await page.evaluate(() => window.__timers.length), 1);
   await page.evaluate(() => document.getElementById('i').remove());
-  await tick(page, 400);
+  await tick(page);
+  await page.evaluate(() => window.__timers.forEach((fn) => fn && fn()));
+  await tick(page);
   assert.deepEqual(await page.evaluate(() => window.__events), []);
   assert.deepEqual(errors, []);
 });
@@ -116,7 +136,7 @@ test('an invalid selector in a props update is an error, not a crash', async () 
   assert.equal(errors.length, 1, errors.join('\n'));
 });
 
-test('a crashed island mounts again when it gets new props', async () => {
+test('a crashed island mounts again when its component changes', async () => {
   const { page, errors } = await open('<div id="x" data-react-island="Boom">f</div>');
   await page.waitForSelector('#x[data-react-state="error"]');
   await page.evaluate(() => {
@@ -137,4 +157,54 @@ test('a crashed island mounts again when it gets new props', async () => {
   await page.waitForSelector('#x output:text("{\\"again\\":1}")');
   assert.equal(await page.getAttribute('#x', 'data-react-state'), 'mounted');
   assert.ok(errors.every((e) => /boom/.test(e)), errors.join('\n'));
+});
+
+test('each root gets its own identifierPrefix', async () => {
+  const { page, errors } = await open('<div data-react-island="Spy">a</div><div data-react-island="Spy">b</div>', {
+    files: {
+      '/spy.js': `
+        window.__prefixes = [];
+        window.autumnReact.push({
+          createElement: function () { return null; },
+          createRoot: function (el, options) {
+            window.__prefixes.push(options.identifierPrefix);
+            return { render: function () {}, unmount: function () {} };
+          },
+          components: { Spy: function () {} },
+        });`,
+    },
+    head: ['/react-islands.js', '/spy.js'],
+  });
+  const prefixes = await page.evaluate(() => window.__prefixes);
+  assert.equal(prefixes.length, 2);
+  assert.notEqual(prefixes[0], prefixes[1]);
+  for (const p of prefixes) assert.match(p, /^autumn-react-\d+-$/);
+  assert.deepEqual(errors, []);
+});
+
+test('an island in error mounts again when it gets good props', async () => {
+  const { page, errors } = await open(
+    '<div id="x" data-react-island="Fragile" data-react-props=\'{"boom":true}\'>f</div>',
+  );
+  await page.waitForSelector('#x[data-react-state="error"]');
+  await page.evaluate(() => document.getElementById('x').setAttribute('data-react-props', '{"boom":false}'));
+  await page.waitForSelector('#x [data-fragile]');
+  assert.equal(await page.getAttribute('#x', 'data-react-state'), 'mounted');
+  assert.ok(errors.length >= 1 && errors.every((e) => /fragile/.test(e)), errors.join('\n'));
+});
+
+test('a loader without defer waits for DOMContentLoaded', async () => {
+  const { page, errors } = await open('<div id="x" data-react-island="Echo"><i>a</i><b>b</b></div>', {
+    head: ['!/react-islands.js', '/components.js'],
+    init: `
+      window.__early = [];
+      document.addEventListener('autumn:react:mount', function () {
+        window.__early.push(document.readyState);
+      });
+    `,
+  });
+  await page.waitForSelector('#x output[data-echo]');
+  // The island mounted after the parser was done, not on a half element.
+  assert.deepEqual(await page.evaluate(() => window.__early), ['interactive']);
+  assert.deepEqual(errors, []);
 });

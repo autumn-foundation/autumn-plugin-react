@@ -1,5 +1,6 @@
 // Test components. The harness bundles this file with esbuild and real React.
-import { createElement, useEffect, useId, useState } from 'react';
+import { createElement, useEffect, useId, useState, version } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { register } from '../../frontend/src/register.js';
 
@@ -26,6 +27,12 @@ function Boom() {
   throw new Error('boom');
 }
 
+// Throws during render when `boom` is true.
+function Fragile({ boom }) {
+  if (boom) throw new Error('fragile');
+  return <span data-fragile>ok</span>;
+}
+
 // Records mount and unmount in window.__log.
 function Effect({ tag = 'x' }) {
   useEffect(() => {
@@ -44,4 +51,4 @@ function Nest() {
   );
 }
 
-register({ createElement, createRoot, components: { Echo, Counter, Boom, Effect, Nest } });
+register({ createElement, createRoot, flushSync, version, components: { Echo, Counter, Boom, Effect, Fragile, Nest } });

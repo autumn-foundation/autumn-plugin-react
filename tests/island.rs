@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use autumn_plugin_react::{Island, JsonKind, MountWhen, PropsError};
+use autumn_plugin_react::{AttrError, Island, JsonKind, MountWhen, PropsError};
 use autumn_web::{AutumnError, Markup, html};
 use maud::Render as _;
 use serde::Serialize;
@@ -173,4 +173,97 @@ fn island_is_clone_and_debug() {
     assert_eq!(render(&island), render(&copy));
     assert!(format!("{island:?}").contains("Island"));
     assert_eq!(island.name(), "X");
+}
+
+#[test]
+fn a_proto_key_in_props_is_refused() {
+    let error = Island::new("X")
+        .props(&serde_json::json!({ "__proto__": { "isAdmin": true } }))
+        .expect_err("__proto__");
+    assert!(matches!(error, PropsError::ProtoKey), "{error:?}");
+    assert_eq!(
+        error.to_string(),
+        "island props must not have a `__proto__` key"
+    );
+    // A nested `__proto__` key is data, not a props key.
+    assert!(
+        Island::new("X")
+            .props(&serde_json::json!({ "a": { "__proto__": 1 } }))
+            .is_ok()
+    );
+}
+
+#[test]
+fn extra_attributes_render_after_class_and_are_escaped() {
+    let island = Island::new("X")
+        .class("c")
+        .attr("aria-label", r#"A "b" <c>"#)
+        .expect("attr")
+        .attr("role", "region")
+        .expect("attr")
+        .attr("hx-preserve", "")
+        .expect("attr");
+    assert_eq!(
+        render(&island),
+        r#"<div data-react-island="X" class="c" aria-label="A &quot;b&quot; &lt;c&gt;" role="region" hx-preserve=""></div>"#
+    );
+}
+
+#[test]
+fn a_repeated_attribute_keeps_the_last_value() {
+    let island = Island::new("X")
+        .attr("role", "a")
+        .expect("attr")
+        .attr("role", "b")
+        .expect("attr");
+    assert_eq!(
+        render(&island),
+        r#"<div data-react-island="X" role="b"></div>"#
+    );
+}
+
+#[test]
+fn bad_attribute_names_are_refused() {
+    for name in ["", "a b", "a\"b", "a>b", "1a", "-a", "é"] {
+        let error = Island::new("X").attr(name, "v").expect_err(name);
+        assert!(
+            matches!(error, AttrError::InvalidName(_)),
+            "{name}: {error:?}"
+        );
+    }
+    for name in [
+        "id",
+        "class",
+        "ID",
+        "data-react-island",
+        "data-react-props",
+        "DATA-REACT-STATE",
+        "onclick",
+        "onLoad",
+    ] {
+        let error = Island::new("X").attr(name, "v").expect_err(name);
+        assert!(matches!(error, AttrError::Reserved(_)), "{name}: {error:?}");
+    }
+    assert_eq!(
+        AttrError::Reserved("id".into()).to_string(),
+        "the island attribute `id` is reserved; use the island builder method or the loader"
+    );
+    assert_eq!(
+        AttrError::InvalidName("a b".into()).to_string(),
+        "`a b` is not a valid attribute name"
+    );
+}
+
+#[test]
+fn attr_error_converts_to_autumn_error() {
+    fn handler() -> Result<Island, AutumnError> {
+        Ok(Island::new("X").attr("onclick", "x")?)
+    }
+    assert_eq!(handler().expect_err("refused").status().as_u16(), 500);
+}
+
+#[test]
+fn an_inline_island_is_a_span() {
+    let island = Island::new("X").inline().fallback(html! { "f" });
+    assert_eq!(render(&island), r#"<span data-react-island="X">f</span>"#);
 }

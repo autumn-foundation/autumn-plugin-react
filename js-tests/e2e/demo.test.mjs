@@ -15,6 +15,7 @@ const BIN = process.env.DEMO_BIN
   ?? fileURLToPath(new URL('../../target/debug/examples/react_demo', import.meta.url));
 let BASE;
 let server;
+let serverLog = '';
 let browser;
 
 // Asks the OS for a free port.
@@ -31,6 +32,9 @@ function freePort() {
 
 async function waitForServer() {
   for (let i = 0; i < 150; i++) {
+    if (server.exitCode !== null) {
+      throw new Error(`demo server stopped (exit ${server.exitCode}):\n${serverLog}`);
+    }
     try {
       const res = await fetch(`${BASE}/`);
       if (res.ok) return;
@@ -39,7 +43,7 @@ async function waitForServer() {
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`demo server did not start on ${BASE}`);
+  throw new Error(`demo server did not start on ${BASE}:\n${serverLog}`);
 }
 
 before(async () => {
@@ -48,7 +52,11 @@ before(async () => {
   BASE = `http://127.0.0.1:${port}`;
   server = spawn(BIN, [], {
     env: { ...process.env, AUTUMN_SERVER__PORT: String(port), AUTUMN_SERVER__HOST: '127.0.0.1' },
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  // Keep the end of stderr for the error message.
+  server.stderr.on('data', (chunk) => {
+    serverLog = (serverLog + chunk).slice(-4000);
   });
   await waitForServer();
   browser = await chromium.launch();
@@ -106,7 +114,7 @@ test('the counter mounts with server props and keeps local state', async () => {
   const { page, unexpected } = await openDemo();
   assert.equal(await page.textContent('#counter output'), '3');
   await page.click('#counter button');
-  assert.equal(await page.textContent('#counter output'), '4');
+  await page.waitForSelector('#counter output:text("4")');
   assert.equal(await page.getAttribute('#counter', 'data-react-state'), 'mounted');
   assert.deepEqual(unexpected(), []);
 });
@@ -114,7 +122,7 @@ test('the counter mounts with server props and keeps local state', async () => {
 test('an htmx POST sends new basket props and React keeps the open state', async () => {
   const { page, unexpected } = await openDemo();
   await page.click('#basket button');
-  assert.equal(await page.getAttribute('#basket button', 'aria-expanded'), 'true');
+  await page.waitForSelector('#basket button[aria-expanded="true"]');
   const before = Number((await page.textContent('#basket button')).match(/\d+/)[0]);
   await page.click('#add');
   await page.waitForSelector(`#basket button:text("Basket (${before + 1})")`);

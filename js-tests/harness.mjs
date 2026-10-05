@@ -26,6 +26,7 @@ let bundles;
 const COVERAGE_DIR = process.env.LOADER_COVERAGE;
 const covered = new Uint8Array(LOADER.length);
 const pages = [];
+const contexts = [];
 
 async function bundle(entry) {
   const result = await build({
@@ -60,6 +61,7 @@ export async function close() {
     mkdirSync(COVERAGE_DIR, { recursive: true });
     writeFileSync(`${COVERAGE_DIR}/${process.pid}.bin`, covered);
   }
+  for (const context of contexts.splice(0)) await context.close();
   await browser?.close();
 }
 
@@ -77,7 +79,8 @@ function markCovered(functions) {
  *
  * Options:
  * - `head`: script paths in `<head>` order. Default:
- *   `['/react-islands.js', '/components.js']`.
+ *   `['/react-islands.js', '/components.js']`. A `!` prefix loads a
+ *   script without `defer`.
  * - `files`: extra map of path → JS.
  * - `init`: JS that runs before any page script (`addInitScript`).
  * - `viewport`: Playwright viewport size.
@@ -87,6 +90,7 @@ function markCovered(functions) {
  */
 export async function open(body, options = {}) {
   const context = await browser.newContext(options.viewport ? { viewport: options.viewport } : {});
+  contexts.push(context);
   const page = await context.newPage();
   page.setDefaultTimeout(5000);
   const errors = [];
@@ -96,8 +100,9 @@ export async function open(body, options = {}) {
   });
 
   const head = options.head ?? ['/react-islands.js', '/components.js'];
+  // A `!` prefix loads the script without `defer` (parser-blocking).
   const tags = [...head, '/csp-probe.js']
-    .map((p) => `<script src="${p}" defer></script>`)
+    .map((p) => (p.startsWith('!') ? `<script src="${p.slice(1)}"></script>` : `<script src="${p}" defer></script>`))
     .join('\n');
   const html = `<!doctype html><html><head><meta charset="utf-8">${tags}</head><body>${body}</body></html>`;
   const files = {

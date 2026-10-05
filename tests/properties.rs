@@ -46,4 +46,16 @@ proptest! {
         prop_assert_eq!(unescape(attr(&html, "id").unwrap()), id);
         prop_assert_eq!(unescape(attr(&html, "class").unwrap()), class);
     }
+
+    /// An extra attribute value cannot break out either.
+    #[test]
+    fn extra_attribute_values_cannot_break_out(value in ".*") {
+        let html = Island::new("X")
+            .attr("aria-label", value.clone())
+            .unwrap()
+            .render()
+            .into_string();
+        prop_assert_eq!(html.matches('<').count(), 2, "{}", html);
+        prop_assert_eq!(unescape(attr(&html, "aria-label").unwrap()), value);
+    }
 }

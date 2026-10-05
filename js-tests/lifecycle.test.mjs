@@ -2,7 +2,7 @@
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RECORD_EVENTS, close, launch, open } from './harness.mjs';
+import { RECORD_EVENTS, addScript, close, launch, open } from './harness.mjs';
 
 before(launch);
 after(close);
@@ -72,6 +72,7 @@ test('a data-react-props change renders again and keeps the state', async () => 
 test('bad props on update give an error and keep the last good render', async () => {
   const { page, errors } = await open('<div id="c" data-react-island="Counter">f</div>');
   await page.click('#c button');
+  await page.waitForSelector('#c button:text("Count: 1")');
   await page.evaluate(() => document.getElementById('c').setAttribute('data-react-props', '[1]'));
   await page.waitForSelector('#c[data-react-state="error"]');
   assert.equal(await page.textContent('#c button'), 'Count: 1');
@@ -111,13 +112,20 @@ test('the idle strategy waits for requestIdleCallback', async () => {
     {
       init: `
         window.__idle = [];
-        window.requestIdleCallback = function (cb) { window.__idle.push(cb); return window.__idle.length; };
+        window.__idleOptions = [];
+        window.requestIdleCallback = function (cb, options) {
+          window.__idle.push(cb);
+          window.__idleOptions.push(options);
+          return window.__idle.length;
+        };
         window.cancelIdleCallback = function (id) { window.__idle[id - 1] = null; };
       `,
     },
   );
   await tick(page);
   assert.equal(await page.getAttribute('#i', 'data-react-state'), 'waiting');
+  // A busy page still mounts the island within 2 s.
+  assert.deepEqual(await page.evaluate(() => window.__idleOptions), [{ timeout: 2000 }]);
   assert.equal(await page.textContent('#i'), 'wait');
   await page.evaluate(() => window.__idle.forEach((cb) => cb && cb({ timeRemaining: () => 50 })));
   await page.waitForSelector('#i output[data-echo]');
@@ -167,8 +175,37 @@ test('an unknown mount strategy mounts at load', async () => {
 
 test('an island removed while pending leaves no work behind', async () => {
   const { page, errors } = await open('<div id="p" data-react-island="Late">x</div>', { init: RECORD_EVENTS });
-  await page.evaluate(() => document.getElementById('p').remove());
+  await page.evaluate(() => {
+    window.__held = document.getElementById('p');
+    window.__held.remove();
+  });
+  await tick(page);
+  // A late registration must not mount the removed island.
+  await addScript(page, '/late.js');
   await tick(page);
   assert.deepEqual(await page.evaluate(() => window.__events), []);
+  assert.equal(await page.evaluate(() => window.__held.textContent), 'x');
+  assert.equal(errors.length, 1, 'only the duplicate Echo registration');
+});
+
+test('teardown stops watching a visible island', async () => {
+  const { page, errors } = await open(
+    `${'<p>line</p>'.repeat(200)}<div id="v" data-react-island="Echo" data-react-mount="visible">w</div>`,
+    {
+      viewport: { width: 800, height: 600 },
+      init: `
+        window.__unobserved = [];
+        const Base = window.IntersectionObserver;
+        window.IntersectionObserver = class extends Base {
+          unobserve(el) { window.__unobserved.push(el.id); return super.unobserve(el); }
+        };
+      `,
+    },
+  );
+  await tick(page);
+  assert.equal(await page.getAttribute('#v', 'data-react-state'), 'waiting');
+  await page.evaluate(() => document.getElementById('v').remove());
+  await tick(page);
+  assert.deepEqual(await page.evaluate(() => window.__unobserved), ['v']);
   assert.deepEqual(errors, []);
 });

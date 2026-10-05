@@ -190,17 +190,54 @@ fn plugin_declares_an_autumn_web_0_8_contract() {
     assert_eq!(app.plugin_contracts().len(), 1);
 }
 
+/// Returns the 8 hex digits after `ns@` in `name`.
+fn fingerprint<'a>(name: &'a str, ns: &str) -> &'a str {
+    let start = name.find(&format!("{ns}@")).expect("namespace in name") + ns.len() + 1;
+    &name[start..start + 8]
+}
+
 #[test]
-fn name_lists_the_bundle_namespaces() {
+fn name_lists_the_bundles_with_a_fingerprint() {
     assert_eq!(ReactPlugin::new().name(), PLUGIN_NAME);
-    assert_eq!(
-        ReactPlugin::new()
-            .bundle(&OTHER)
-            .bundle(&APP)
-            .bundle(&APP)
-            .name(),
-        "autumn-plugin-react[react-plugin-other,react-plugin-test]"
+    let name = ReactPlugin::new()
+        .bundle(&OTHER)
+        .bundle(&APP)
+        .bundle(&APP)
+        .name()
+        .into_owned();
+    assert!(
+        name.starts_with("autumn-plugin-react[react-plugin-other@"),
+        "{name}"
     );
+    assert!(name.contains(",react-plugin-test@"), "{name}");
+    assert!(name.ends_with(']'), "{name}");
+    for ns in ["react-plugin-other", "react-plugin-test"] {
+        let hash = fingerprint(&name, ns);
+        assert!(hash.bytes().all(|b| b.is_ascii_hexdigit()), "{name}");
+    }
+    // The same bundles give the same name, in any order.
+    assert_eq!(ReactPlugin::new().bundle(&APP).bundle(&OTHER).name(), name);
+}
+
+static SAME_NS_A: PluginAssets =
+    PluginAssets::from_files("react-plugin-same", &[("islands.js", b"window.a = 1;")]);
+static SAME_NS_B: PluginAssets =
+    PluginAssets::from_files("react-plugin-same", &[("islands.js", b"window.b = 2;")]);
+
+#[test]
+fn different_bundles_in_one_namespace_get_different_names() {
+    let a = ReactPlugin::new().bundle(&SAME_NS_A).name();
+    let b = ReactPlugin::new().bundle(&SAME_NS_B).name();
+    assert_ne!(a, b);
+}
+
+#[test]
+#[should_panic(expected = "react-plugin-same")]
+fn different_bundles_in_one_namespace_stop_the_app() {
+    // Autumn does not skip the second plugin, so its namespace check runs.
+    let _ = autumn_web::app()
+        .plugin(ReactPlugin::new().bundle(&SAME_NS_A))
+        .plugin(ReactPlugin::new().bundle(&SAME_NS_B));
 }
 
 #[tokio::test]
