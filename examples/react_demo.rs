@@ -35,7 +35,7 @@ const PRODUCTS: [&str; 4] = ["Apples", "Pears", "Plums", "Quinces"];
 
 #[autumn_web::main]
 async fn main() {
-    app().run().await;
+    Box::pin(app().run()).await;
 }
 
 fn app() -> autumn_web::app::AppBuilder {

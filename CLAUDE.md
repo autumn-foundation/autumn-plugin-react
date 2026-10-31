@@ -1,6 +1,6 @@
 # CLAUDE.md - autumn-plugin-react
 
-React islands for Autumn 0.8 apps, served through the `plugin_assets`
+React islands for Autumn 0.9 apps, served through the `plugin_assets`
 API. Read `docs/plan.md` and `docs/adr/` first.
 
 ## Layout

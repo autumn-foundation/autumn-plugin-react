@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Support `autumn-web` 0.9. The plugin now needs `autumn-web` 0.9.
+
 ### Added
 
 - `ReactPlugin` serves the island loader and app bundles through the
