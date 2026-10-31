@@ -24,7 +24,7 @@ exclude = [
 
 [dependencies]
 # No default features: the host app selects the Autumn features.
-autumn-web = { version = "0.8", default-features = false, features = ["maud"] }
+autumn-web = { version = "0.9", default-features = false, features = ["maud"] }
 # `html!` expands to `maud::` paths, so this crate needs `maud` by name.
 maud = "0.27"
 serde = "1"
@@ -33,7 +33,7 @@ thiserror = "2"
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["raw_value"] }
-autumn-web = { version = "0.8", default-features = false, features = ["maud", "htmx"] }
+autumn-web = { version = "0.9", default-features = false, features = ["maud", "htmx"] }
 base64 = "0.22"
 proptest = "1"
 serde = { version = "1", features = ["derive"] }
