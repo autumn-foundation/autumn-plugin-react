@@ -18,7 +18,7 @@ time.
 
 ```toml
 [dependencies]
-autumn-plugin-react = "0.1"
+autumn-plugin-react = "0.2"
 ```
 
 The loader needs React 19 or later. It uses the React 19 root option
