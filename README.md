@@ -72,14 +72,15 @@ is a complete reference project. Types for the registration API are in
 
 ### 2. Install the plugin and the bundle
 
-```rust,ignore
+```rust,no_run
 use autumn_plugin_react::{Island, ReactPlugin, react_bundle, react_script};
 use autumn_web::assets::PluginAssets;
 use autumn_web::prelude::*;
 
+// The demo bundle of this repository. Use the output of your own build.
 static ISLANDS: PluginAssets = PluginAssets::from_files(
     "app-islands",
-    &[("islands.js", include_bytes!("../islands/islands.js"))],
+    &[("islands.js", include_bytes!("../examples/islands/islands.js"))],
 );
 
 #[get("/")]
@@ -118,8 +119,9 @@ async fn main() {
 
 ### 3. Send new props from the server
 
-```rust,ignore
+```rust,no_run
 use autumn_plugin_react::PropsUpdate;
+use autumn_web::prelude::*;
 
 #[post("/basket")]
 async fn add_item() -> AutumnResult<(PropsUpdate, Markup)> {

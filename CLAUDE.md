@@ -31,6 +31,8 @@ API. Read `docs/plan.md` and `docs/adr/` first.
 
 ## Rules
 
+- README Rust snippets are doctests. Make them compile; use `no_run`, not `ignore`.
+  `tests/doc_snippets.rs` checks the TOML snippets and the version pins in the docs.
 - `react-islands.js` must not use `eval`, `new Function`, `innerHTML`,
   `outerHTML`, `insertAdjacentHTML` or `document.write`.
   `tests/loader_source.rs` checks this.
