@@ -74,3 +74,8 @@ pub use island::{AttrError, Island, JsonKind, MountWhen, PropsError};
 pub use plugin::{PLUGIN_NAME, ReactPlugin};
 pub use tags::{react_bundle, react_script};
 pub use update::{PROPS_EVENT, PropsUpdate};
+
+/// Compiles the Rust snippets of the README as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;
