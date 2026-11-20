@@ -101,7 +101,7 @@ impl Plugin for ReactPlugin {
         Some(
             PluginContract::new(PLUGIN_NAME)
                 .plugin_version(env!("CARGO_PKG_VERSION"))
-                .autumn_web("0.10"),
+                .autumn_web("0.11"),
         )
     }
 
